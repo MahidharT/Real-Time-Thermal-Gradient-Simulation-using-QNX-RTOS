@@ -1,1 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Thermal Simulation Viewer</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #controls { margin-bottom: 20px; }
+        button { padding: 10px 20px; margin: 5px; font-size: 14px; }
+        #plot { width: 100%; height: 600px; }
+    </style>
+</head>
+<body>
+    <h1>QNX Thermal Simulation Viewer</h1>
+    <div id="controls">
+        <input type="file" id="csvFile" accept=".csv">
+        <button onclick="loadCSV()">Load Data</button>
+        <select id="plotType" onchange="updatePlot()">
+            <option value="heatmap">2D Heatmap</option>
+            <option value="surface">3D Surface</option>
+            <option value="contour">Contour Plot</option>
+        </select>
+    </div>
+    <div id="plot"></div>
+    <div id="stats"></div>
 
+    <script>
+        let temperatureData = null;
+
+        function loadCSV() {
+            const file = document.getElementById('csvFile').files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                parseCSV(text);
+            };
+            reader.readAsText(file);
+        }
+
+        function parseCSV(text) {
+            const lines = text.split('\n').filter(line => 
+                !line.startsWith('#') && line.trim() !== '' && !line.startsWith('X,Y')
+            );
+            
+            const data = lines.map(line => {
+                const [x, y, temp] = line.split(',').map(Number);
+                return { x, y, temp };
+            });
+
+            const gridSize = Math.sqrt(data.length);
+            temperatureData = {
+                gridSize: gridSize,
+                x: data.map(d => d.x),
+                y: data.map(d => d.y),
+                z: data.map(d => d.temp)
+            };
+
+            updatePlot();
+            showStatistics();
+        }
+
+        function updatePlot() {
+            if (!temperatureData) return;
+
+            const plotType = document.getElementById('plotType').value;
+            const { gridSize, x, y, z } = temperatureData;
+
+            // Reshape 1D array to 2D grid
+            const zGrid = [];
+            for (let i = 0; i < gridSize; i++) {
+                zGrid[i] = z.slice(i * gridSize, (i + 1) * gridSize);
+            }
+
+            let data, layout;
+
+            if (plotType === 'heatmap') {
+                data = [{
+                    z: zGrid,
+                    type: 'heatmap',
+                    colorscale: 'Jet',
+                    colorbar: { title: 'Temperature (°C)' }
+                }];
+                layout = {
+                    title: 'Temperature Distribution',
+                    xaxis: { title: 'X Position' },
+                    yaxis: { title: 'Y Position' }
+                };
+            } else if (plotType === 'surface') {
+                data = [{
+                    z: zGrid,
+                    type: 'surface',
+                    colorscale: 'Jet',
+                    colorbar: { title: 'Temperature (°C)' }
+                }];
+                layout = {
+                    title: '3D Temperature Surface',
+                    scene: {
+                        xaxis: { title: 'X Position' },
+                        yaxis: { title: 'Y Position' },
+                        zaxis: { title: 'Temperature (°C)' }
+                    }
+                };
+            } else {
+                data = [{
+                    z: zGrid,
+                    type: 'contour',
+                    colorscale: 'Jet',
+                    contours: { coloring: 'heatmap' },
+                    colorbar: { title: 'Temperature (°C)' }
+                }];
+                layout = {
+                    title: 'Temperature Contours',
+                    xaxis: { title: 'X Position' },
+                    yaxis: { title: 'Y Position' }
+                };
+            }
+
+            Plotly.newPlot('plot', data, layout);
+        }
+
+        function showStatistics() {
+            if (!temperatureData) return;
+
+            const temps = temperatureData.z;
+            const max = Math.max(...temps);
+            const min = Math.min(...temps);
+            const avg = temps.reduce((a, b) => a + b, 0) / temps.length;
+            const std = Math.sqrt(temps.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / temps.length);
+
+            document.getElementById('stats').innerHTML = `
+                <h3>Statistics</h3>
+                <p>Max Temperature: ${max.toFixed(2)}°C</p>
+                <p>Min Temperature: ${min.toFixed(2)}°C</p>
+                <p>Avg Temperature: ${avg.toFixed(2)}°C</p>
+                <p>Std Deviation: ${std.toFixed(2)}°C</p>
+            `;
+        }
+    </script>
+</body>
+</html>
